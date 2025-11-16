@@ -144,4 +144,138 @@
 
   function uploadBlob(blob, filename) {
     const meta = makePublicId();
-    const fd = new Form
+    const fd = new FormData();
+    fd.append("file", blob, filename || meta.publicId);
+    fd.append("public_id", meta.publicId);
+    fd.append("upload_preset", UPLOAD_PRESET);
+
+    fetch(UPLOAD_URL, { method: "POST", body: fd })
+      .then(r => r.json())
+      .then(res => handleResult(res, meta))
+      .catch(err => alertV("Upload failed: " + err));
+  }
+
+  async function uploadExternalSvg(url) {
+    try {
+      const resp = await fetch(url);
+      const text = await resp.text(); // valid SVG content
+      const blob = new Blob([text], { type: "image/svg+xml" });
+      uploadBlob(blob, "logo.svg");
+    } catch (e) {
+      console.error("SVG fetch failed, fallback to URL upload:", e);
+      uploadUrl(url);
+    }
+  }
+
+  function uploadUrl(url) {
+    const meta = makePublicId();
+    const fd = new FormData();
+    fd.append("file", url);
+    fd.append("public_id", meta.publicId);
+    fd.append("upload_preset", UPLOAD_PRESET);
+
+    fetch(UPLOAD_URL, { method: "POST", body: fd })
+      .then(r => r.json())
+      .then(res => handleResult(res, meta))
+      .catch(err => alertV("Upload failed: " + err));
+  }
+
+  // ---------- Upload element types ----------
+
+  function uploadSvgElement(svg) {
+    cleanSvg(svg);
+    expandUse(svg);
+    copyDefs(svg);
+
+    const xml =
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([xml], { type: "image/svg+xml" });
+    uploadBlob(blob, "logo.svg");
+  }
+
+  function uploadImgElement(img) {
+    const src = img.currentSrc || img.src;
+    if (!src) {
+      alertV("Image has no src attribute");
+      return;
+    }
+
+    if (src.endsWith(".svg") || src.includes(".svg?")) {
+      uploadExternalSvg(src);   // FIXED path for ASOS and others
+      return;
+    }
+
+    if (!src.startsWith("data:")) {
+      uploadUrl(src);
+      return;
+    }
+
+    // handle data URLs
+    try {
+      const [, data] = src.split(",");
+      const isBase64 = src.match(/base64/i);
+      const mime = src.match(/data:(.*?);/)[1];
+      let bytes;
+
+      if (isBase64) {
+        const bin = atob(data);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        bytes = arr;
+      } else {
+        bytes = new TextEncoder().encode(decodeURIComponent(data));
+      }
+
+      uploadBlob(new Blob([bytes], { type: mime }), "image");
+    } catch (e) {
+      console.error("data URL parsing failed", e);
+      uploadUrl(src);
+    }
+  }
+
+  // ---------- Selection UI ----------
+
+  function startSelection() {
+    const svgs = $("svg");
+    const imgs = $("img");
+
+    if (!svgs.length && !imgs.length) {
+      alertV("No SVGs or images found.");
+      return;
+    }
+
+    [...svgs, ...imgs].forEach(el => {
+      el.style.outline = "2px solid red";
+      el.style.cursor = "copy";
+    });
+
+    alertV("Click any highlighted SVG or IMG to upload as {domain}_logo_vN");
+
+    function clear() {
+      [...svgs, ...imgs].forEach(el => {
+        el.style.outline = "";
+        el.style.cursor = "";
+      });
+    }
+
+    function clickHandler(e) {
+      const s = e.target.closest("svg");
+      const i = e.target.closest("img");
+
+      if (!s && !i) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      document.removeEventListener("click", clickHandler, true);
+      clear();
+
+      if (s) uploadSvgElement(s);
+      else if (i) uploadImgElement(i);
+    }
+
+    document.addEventListener("click", clickHandler, true);
+  }
+
+  startSelection();
+})();
