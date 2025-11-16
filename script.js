@@ -1,12 +1,12 @@
 (function() {
-  const SCRIPT_VERSION = "1.2.0";
+  const SCRIPT_VERSION = "1.3.0";
   console.log("LogoGrabber script loaded. Version:", SCRIPT_VERSION);
 
   const XLINK = "http://www.w3.org/1999/xlink";
   const makeNS = n => document.createElementNS("http://www.w3.org/2000/svg", n);
   const $ = (q, r = document) => Array.from(r.querySelectorAll(q));
 
-  // ---------- SVG helpers ----------
+  // ---------- SVG handling ----------
 
   function copyDefs(svg) {
     const defs = svg.querySelector("defs") || svg.insertBefore(makeNS("defs"), svg.firstChild);
@@ -30,13 +30,11 @@
 
       const parts = ref.split("#");
       if (parts.length < 2) return;
-
       const id = parts[1];
       const source = document.getElementById(id);
       if (!source) return;
 
       const g = makeNS("g");
-
       use.getAttributeNames().forEach(a => {
         if (a !== "href" && a !== "xlink:href") {
           g.setAttribute(a, use.getAttribute(a));
@@ -73,31 +71,18 @@
     }
   }
 
-  // ---------- Naming helpers ----------
+  // ---------- Domain-based naming ----------
 
-  function getSiteName() {
+  function getBaseDomain() {
     try {
-      const ogSite = document.querySelector('meta[property="og:site_name"]');
-      if (ogSite && ogSite.content) return ogSite.content;
-
-      const appName = document.querySelector('meta[name="application-name"]');
-      if (appName && appName.content) return appName.content;
-
-      if (document.title && document.title.trim()) return document.title.trim();
-
-      return window.location.hostname || "site";
+      let host = window.location.hostname.toLowerCase();
+      host = host.replace(/^www\./, "");    // strip www
+      host = host.replace(/\./g, "_");      // dots → underscores
+      host = host.replace(/[^a-z0-9_]/g, ""); // cleanup
+      return host || "site";
     } catch (e) {
       return "site";
     }
-  }
-
-  function slugify(str) {
-    return (str || "site")
-      .toLowerCase()
-      .replace(/https?:\/\//g, "")
-      .replace(/www\./g, "")
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "") || "site";
   }
 
   function getVersionForBase(baseSlug) {
@@ -108,69 +93,64 @@
       localStorage.setItem(key, String(next));
       return next;
     } catch (e) {
-      // Fallback if localStorage blocked: use timestamp
-      return Date.now();
+      return Date.now(); // fallback if localStorage disabled
     }
   }
 
   function makePublicId() {
-    const siteName = getSiteName();
-    const baseSlug = slugify(siteName);
+    const baseSlug = getBaseDomain();
     const version = getVersionForBase(baseSlug);
     return {
-      siteName,
       baseSlug,
       version,
       publicId: baseSlug + "_logo_v" + version
     };
   }
 
-  // ---------- Upload helpers ----------
+  // ---------- Cloudinary Upload ----------
 
   const CLOUD_NAME = "patrickg-assets";
   const UPLOAD_PRESET = "unsignedUpload";
   const UPLOAD_URL = "https://api.cloudinary.com/v1_1/" + CLOUD_NAME + "/upload";
 
-  function alertWithVersion(message) {
+  function alertV(message) {
     alert("LogoGrabber v" + SCRIPT_VERSION + "\n\n" + message);
   }
 
   function handleUploadResponse(res, meta) {
     if (res.error) {
-      alertWithVersion("Cloudinary error: " + res.error.message);
+      alertV("Cloudinary error: " + res.error.message);
       console.error("Cloudinary error:", res);
       return;
     }
 
     const url = res.secure_url || res.url;
     if (!url) {
-      alertWithVersion("Upload succeeded but no URL returned. Check console.");
+      alertV("Upload succeeded but no URL returned. See console.");
       console.log(res);
       return;
     }
 
     const msg =
-      "Uploaded ✅\n" +
-      "Site: " + meta.baseSlug + "\n" +
+      "Uploaded ✔️\n" +
+      "Domain: " + meta.baseSlug + "\n" +
       "Version: v" + meta.version + "\n" +
       "public_id: " + meta.publicId + "\n\n" +
       "URL:\n" + url;
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url)
-        .then(() => alertWithVersion(msg + "\n(URL copied to clipboard)"))
-        .catch(() => alertWithVersion(msg));
+        .then(() => alertV(msg + "\n(URL copied to clipboard)"))
+        .catch(() => alertV(msg));
     } else {
-      alertWithVersion(msg);
+      alertV(msg);
     }
-
-    console.log("Uploaded to Cloudinary:", res);
   }
 
-  function uploadBlobToCloudinary(blob, filename) {
+  function uploadBlob(blob, filename) {
     const meta = makePublicId();
     const fd = new FormData();
-    fd.append("file", blob, filename || (meta.publicId + ".bin"));
+    fd.append("file", blob, filename || meta.publicId + ".bin");
     fd.append("public_id", meta.publicId);
     fd.append("upload_preset", UPLOAD_PRESET);
 
@@ -178,15 +158,14 @@
       .then(r => r.json())
       .then(res => handleUploadResponse(res, meta))
       .catch(err => {
-        alertWithVersion("Upload failed. See console.");
-        console.error("Upload error:", err);
+        alertV("Upload failed. See console.");
+        console.error(err);
       });
   }
 
-  function uploadUrlToCloudinary(url) {
+  function uploadUrl(url) {
     const meta = makePublicId();
     const fd = new FormData();
-    // Cloudinary will fetch this remote URL
     fd.append("file", url);
     fd.append("public_id", meta.publicId);
     fd.append("upload_preset", UPLOAD_PRESET);
@@ -195,109 +174,103 @@
       .then(r => r.json())
       .then(res => handleUploadResponse(res, meta))
       .catch(err => {
-        alertWithVersion("Upload failed. See console.");
-        console.error("Upload error:", err);
+        alertV("Upload failed. See console.");
+        console.error(err);
       });
   }
 
+  // ---------- Element uploaders ----------
+  
   function uploadSvgElement(svg) {
     cleanSvg(svg);
     const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
                 new XMLSerializer().serializeToString(svg);
     const blob = new Blob([xml], { type: "image/svg+xml" });
-    uploadBlobToCloudinary(blob, "logo.svg");
+    uploadBlob(blob, "logo.svg");
   }
 
   function uploadImgElement(img) {
-    // If it's a data URL, turn it into a Blob; otherwise, let Cloudinary fetch the remote URL.
     const src = img.currentSrc || img.src;
     if (!src) {
-      alertWithVersion("Selected image has no src.");
+      alertV("Selected image has no src.");
       return;
     }
 
-    if (src.startsWith("data:")) {
-      try {
-        const parts = src.split(",");
-        const header = parts[0];
-        const data = parts[1];
-        const isBase64 = /;base64$/i.test(header.split(";")[1] || "");
-        const mime = header.split(":")[1].split(";")[0] || "application/octet-stream";
+    // Direct URL upload
+    if (!src.startsWith("data:")) {
+      uploadUrl(src);
+      return;
+    }
 
-        let bytes;
-        if (isBase64) {
-          const binary = atob(data);
-          const len = binary.length;
-          const arr = new Uint8Array(len);
-          for (let i = 0; i < len; i++) arr[i] = binary.charCodeAt(i);
-          bytes = arr;
-        } else {
-          bytes = new TextEncoder().encode(decodeURIComponent(data));
-        }
+    // Data URL → Blob
+    try {
+      const parts = src.split(",");
+      const header = parts[0];
+      const data = parts[1];
+      const isBase64 = /base64/i.test(header);
+      const mime = header.split(":")[1].split(";")[0];
 
-        const blob = new Blob([bytes], { type: mime });
-        uploadBlobToCloudinary(blob, "logo_image");
-      } catch (e) {
-        console.error("Failed to parse data URL, falling back to direct URL upload:", e);
-        uploadUrlToCloudinary(src);
+      let bytes;
+      if (isBase64) {
+        const binary = atob(data);
+        const arr = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+        bytes = arr;
+      } else {
+        bytes = new TextEncoder().encode(decodeURIComponent(data));
       }
-    } else {
-      uploadUrlToCloudinary(src);
+
+      uploadBlob(new Blob([bytes], { type: mime }), "image");
+    } catch (err) {
+      console.error("Data URL parse failure:", err);
+      uploadUrl(src);
     }
   }
 
-  // ---------- Selection UI ----------
+  // ---------- UI + Selection ----------
 
   function startSelection() {
     const svgs = $("svg");
     const imgs = $("img");
 
     if (!svgs.length && !imgs.length) {
-      alertWithVersion("No SVGs or images found on this page.");
+      alertV("No SVGs or images found on this page.");
       return;
     }
 
-    svgs.forEach(s => {
-      s.style.outline = "2px solid red";
-      s.style.cursor = "copy";
-    });
-    imgs.forEach(i => {
-      i.style.outline = "2px solid red";
-      i.style.cursor = "copy";
-    });
+    svgs.forEach(el => { el.style.outline = "2px solid red"; el.style.cursor = "copy"; });
+    imgs.forEach(el => { el.style.outline = "2px solid red"; el.style.cursor = "copy"; });
 
-    alertWithVersion("Click any highlighted SVG or image to upload as {site}_logo_vN.");
+    alertV("Click any highlighted SVG or IMG to upload as {domain}_logo_vN");
 
-    function clearHighlights() {
-      svgs.forEach(s => { s.style.outline = ""; s.style.cursor = ""; });
-      imgs.forEach(i => { i.style.outline = ""; i.style.cursor = ""; });
+    function clear() {
+      svgs.forEach(el => { el.style.outline = ""; el.style.cursor = ""; });
+      imgs.forEach(el => { el.style.outline = ""; el.style.cursor = ""; });
     }
 
     function clickHandler(e) {
-      const targetSvg = e.target.closest("svg");
-      const targetImg = e.target.closest("img");
+      const s = e.target.closest("svg");
+      const i = e.target.closest("img");
 
-      if (!targetSvg && !targetImg) return;
+      if (!s && !i) return;
 
       e.preventDefault();
       e.stopPropagation();
       document.removeEventListener("click", clickHandler, true);
-      clearHighlights();
+      clear();
 
-      if (targetSvg) {
-        const clone = targetSvg.cloneNode(true);
+      if (s) {
+        const clone = s.cloneNode(true);
         expandUse(clone);
         copyDefs(clone);
         uploadSvgElement(clone);
-      } else if (targetImg) {
-        uploadImgElement(targetImg);
+      } else {
+        uploadImgElement(i);
       }
     }
 
     document.addEventListener("click", clickHandler, true);
   }
 
-  // Start immediately
   startSelection();
-
 })();
