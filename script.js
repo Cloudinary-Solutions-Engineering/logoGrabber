@@ -70,6 +70,57 @@
     }
   }
 
+  // ---- Naming helpers ----
+
+  function getSiteName() {
+    try {
+      const ogSite = document.querySelector('meta[property="og:site_name"]');
+      if (ogSite && ogSite.content) return ogSite.content;
+
+      const appName = document.querySelector('meta[name="application-name"]');
+      if (appName && appName.content) return appName.content;
+
+      if (document.title && document.title.trim()) return document.title.trim();
+
+      return window.location.hostname || "site";
+    } catch (e) {
+      return "site";
+    }
+  }
+
+  function slugify(str) {
+    return (str || "site")
+      .toLowerCase()
+      .replace(/https?:\/\//g, "")
+      .replace(/www\./g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "site";
+  }
+
+  function getVersionForBase(baseSlug) {
+    const key = "logoGrabber_" + baseSlug + "_version";
+    try {
+      const current = parseInt(localStorage.getItem(key) || "0", 10) || 0;
+      const next = current + 1;
+      localStorage.setItem(key, String(next));
+      return next;
+    } catch (e) {
+      // Fallback if localStorage blocked: use timestamp
+      return Date.now();
+    }
+  }
+
+  function makePublicId() {
+    const siteName = getSiteName();
+    const baseSlug = slugify(siteName);
+    const version = getVersionForBase(baseSlug);
+    return {
+      baseSlug,
+      version,
+      publicId: baseSlug + "_logo_v" + version
+    };
+  }
+
   function uploadToCloudinary(svg) {
     cleanSvg(svg);
 
@@ -77,11 +128,12 @@
                 new XMLSerializer().serializeToString(svg);
     const blob = new Blob([xml], { type: "image/svg+xml" });
 
+    const { baseSlug, version, publicId } = makePublicId();
+
     const fd = new FormData();
-    fd.append("file", blob, "demo_logo.svg");
-    fd.append("public_id", "demo_logo");
-    fd.append("overwrite", "true");
-    fd.append("invalidate", "true");
+    fd.append("file", blob, publicId + ".svg");
+    fd.append("public_id", publicId);
+    // no overwrite: each version is unique
     fd.append("upload_preset", "unsignedUpload");
 
     const endpoint = "https://api.cloudinary.com/v1_1/patrickg-assets/upload";
@@ -102,12 +154,19 @@
           return;
         }
 
-        if (navigator.clipboard) {
+        const msg = 
+          "Uploaded ✅\n" +
+          "Site: " + baseSlug + "\n" +
+          "Version: v" + version + "\n" +
+          "public_id: " + publicId + "\n\n" +
+          "URL:\n" + url;
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(url)
-            .then(() => alert("Uploaded as demo_logo 🎉\nURL copied:\n" + url))
-            .catch(() => alert("Uploaded as demo_logo 🎉\nURL:\n" + url));
+            .then(() => alert(msg + "\n(URL copied to clipboard)"))
+            .catch(() => alert(msg));
         } else {
-          alert("Uploaded as demo_logo 🎉\nURL:\n" + url);
+          alert(msg);
         }
 
         console.log("Uploaded to Cloudinary:", res);
@@ -131,7 +190,7 @@
       s.style.cursor = "copy";
     });
 
-    alert("LogoGrabber: Click any highlighted SVG to upload as demo_logo.");
+    alert("LogoGrabber: Click any highlighted SVG to upload as {site}_logo_vN.");
 
     function clickHandler(e) {
       const svg = e.target.closest("svg");
