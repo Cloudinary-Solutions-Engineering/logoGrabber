@@ -1,16 +1,11 @@
 (function () {
-  const SCRIPT_VERSION = "4.0.0";
+  const SCRIPT_VERSION = "5.0.0";
   console.log("LogoGrabber script loaded. Version:", SCRIPT_VERSION);
 
-  // -------------- CONFIG --------------
   const CLOUD_NAME = "patrickg-assets";
   const UPLOAD_PRESET = "unsignedUpload";
   const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`;
-
-  // ASOS-proof proxy
   const PROXY_URL = "https://api.allorigins.win/raw?url=";
-
-  const MAX_CANVAS_DIM = 1024;
 
   const XLINK = "http://www.w3.org/1999/xlink";
   const $ = (q, r = document) => Array.from(r.querySelectorAll(q));
@@ -23,129 +18,143 @@
   // ---------------- DOMAIN NAMING ----------------
 
   function getBaseDomain() {
-    let d = location.hostname.toLowerCase();
-    d = d.replace(/^www\./, "").replace(/\./g, "_").replace(/[^a-z0-9_]/g, "");
-    return d || "site";
+    try {
+      let d = location.hostname.toLowerCase();
+      d = d.replace(/^www\./, "").replace(/\./g, "_").replace(/[^a-z0-9_]/g, "");
+      return d || "site";
+    } catch {
+      return "site";
+    }
   }
+
   const BASE = getBaseDomain();
 
   function nextVersion(base) {
     const key = "logoGrab_" + base + "_v";
-    let v = parseInt(localStorage.getItem(key) || "0", 10) || 0;
-    v++;
-    localStorage.setItem(key, v);
-    return v;
+    try {
+      let v = parseInt(localStorage.getItem(key) || "0", 10) || 0;
+      v++;
+      localStorage.setItem(key, String(v));
+      return v;
+    } catch {
+      return Date.now();
+    }
   }
 
   function newPublicId() {
-    const v = nextVersion(BASE);
+    const version = nextVersion(BASE);
     return {
       base: BASE,
-      version: v,
-      publicId: `${BASE}_logo_v${v}`
+      version,
+      publicId: `${BASE}_logo_v${version}`
     };
   }
 
-  // ---------------- UPLOAD HELPERS ----------------
+  // ---------------- GENERIC UPLOAD HELPERS ----------------
 
   function downloadBlob(blob, name) {
-    const a = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    a.href = url;
-    a.download = name || "logo.png";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    try {
+      const a = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      a.href = url;
+      a.download = name || "logo";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) {
+      console.error("Download failed:", e);
+      alertV("Local download failed (see console).");
+    }
   }
 
-  function cloudinaryFetchUrl(publicId, url, onSuccess, onError) {
+  function cloudinaryUploadBlob(meta, blob, filename, onDone) {
     const fd = new FormData();
-    fd.append("file", url);
-    fd.append("public_id", publicId);
+    fd.append("file", blob, filename || meta.publicId);
+    fd.append("public_id", meta.publicId);
     fd.append("upload_preset", UPLOAD_PRESET);
 
     fetch(UPLOAD_URL, { method: "POST", body: fd })
       .then(r => r.json())
       .then(json => {
-        if (!json || json.error) return onError(json && json.error);
-        onSuccess(json);
+        if (!json || json.error) {
+          console.error("Cloudinary error:", json && json.error);
+          alertV("Cloudinary upload failed.\nI'll download the file locally instead.");
+          downloadBlob(blob, filename || (meta.publicId + ".svg"));
+        } else {
+          showSuccess(json, meta);
+        }
+        if (onDone) onDone(json);
       })
-      .catch(err => onError(err));
-  }
-
-  function cloudinaryUploadBlob(publicId, blob, filename, onSuccess, onError) {
-    const fd = new FormData();
-    fd.append("file", blob, filename || publicId);
-    fd.append("public_id", publicId);
-    fd.append("upload_preset", UPLOAD_PRESET);
-
-    fetch(UPLOAD_URL, { method: "POST", body: fd })
-      .then(r => r.json())
-      .then(json => {
-        if (!json || json.error) return onError(json && json.error);
-        onSuccess(json);
-      })
-      .catch(err => onError(err));
+      .catch(err => {
+        console.error("Cloudinary crash:", err);
+        alertV("Cloudinary upload crashed.\nI'll download the file locally instead.");
+        downloadBlob(blob, filename || (meta.publicId + ".svg"));
+        if (onDone) onDone(null);
+      });
   }
 
   function showSuccess(result, meta) {
     const url = result.secure_url || result.url;
-    if (!url) return alertV("Upload worked but no URL received.");
+    if (!url) {
+      alertV("Upload succeeded but no URL returned.");
+      console.log("Cloudinary response:", result);
+      return;
+    }
 
     const msg =
-      `Uploaded ✔️  
-Domain: ${meta.base}  
-Version: v${meta.version}  
+      `Uploaded ✔️
+Domain: ${meta.base}
+Version: v${meta.version}
 public_id: ${meta.publicId}
 
 URL:
 ${url}`;
 
-    if (navigator.clipboard?.writeText) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url)
-        .then(() => alertV(msg + "\n(URL copied)"))
+        .then(() => alertV(msg + "\n(URL copied to clipboard)"))
         .catch(() => alertV(msg));
     } else {
       alertV(msg);
     }
   }
 
-  // ---------------- INLINE SVG → BLOB ----------------
+  // ---------------- INLINE SVG PROCESSING ----------------
 
   function copyDefs(svg) {
     const defs = svg.querySelector("defs") || svg.insertBefore(makeNS("defs"), svg.firstChild);
-    const seen = new Set(Array.from(defs.children).map(n => n.id));
+    const seen = new Set(Array.from(defs.children).map(n => n.id).filter(Boolean));
     $("svg defs").forEach(d => {
-      for (const node of d.children) {
+      Array.from(d.children).forEach(node => {
         if (node.nodeType === 1 && (!node.id || !seen.has(node.id))) {
           defs.appendChild(node.cloneNode(true));
           if (node.id) seen.add(node.id);
         }
-      }
+      });
     });
   }
 
   function expandUse(svg) {
     $("use", svg).forEach(use => {
-      const href =
+      const ref =
         use.getAttribute("href") ||
         use.getAttributeNS(XLINK, "href") ||
         use.getAttribute("xlink:href");
-      if (!href) return;
+      if (!ref) return;
 
-      const parts = href.split("#");
+      const parts = ref.split("#");
       if (parts.length < 2) return;
       const id = parts[1];
       const srcEl = document.getElementById(id);
       if (!srcEl) return;
 
       const g = makeNS("g");
-      for (const a of use.getAttributeNames()) {
+      use.getAttributeNames().forEach(a => {
         if (a !== "href" && a !== "xlink:href") {
           g.setAttribute(a, use.getAttribute(a));
         }
-      }
+      });
 
       if (srcEl.tagName.toLowerCase() === "symbol") {
         if (!svg.hasAttribute("viewBox") && srcEl.hasAttribute("viewBox")) {
@@ -161,17 +170,20 @@ ${url}`;
   }
 
   function cleanSvg(svg) {
-    svg.removeAttribute("style");
     svg.style.outline = "";
+    svg.removeAttribute("style");
     svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     svg.setAttribute("xmlns:xlink", XLINK);
 
     const vb = svg.getAttribute("viewBox");
     if (vb && (!svg.getAttribute("width") || !svg.getAttribute("height"))) {
-      const [, , w, h] = vb.split(/\s+/).map(Number);
-      if (w && h) {
-        svg.setAttribute("width", w);
-        svg.setAttribute("height", h);
+      const vals = vb.split(/\s+/).map(Number);
+      if (vals.length === 4) {
+        const w = vals[2], h = vals[3];
+        if (w > 0 && h > 0) {
+          svg.setAttribute("width", w);
+          svg.setAttribute("height", h);
+        }
       }
     }
   }
@@ -180,150 +192,95 @@ ${url}`;
     cleanSvg(svg);
     expandUse(svg);
     copyDefs(svg);
-
-    const xml = '<?xml version="1.0"?>\n' + new XMLSerializer().serializeToString(svg);
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+                new XMLSerializer().serializeToString(svg);
     return new Blob([xml], { type: "image/svg+xml" });
   }
 
-  // ---------------- CANVAS PNG FALLBACK (ASOS PROOF) ----------------
-
-  function svgUrlToPngBlob(svgUrl, cb) {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-
-    img.onload = function () {
-      let w = img.naturalWidth || img.width || 512;
-      let h = img.naturalHeight || img.height || 512;
-
-      const maxSide = Math.max(w, h);
-      const scale = MAX_CANVAS_DIM / maxSide;
-      w = Math.round(w * scale);
-      h = Math.round(h * scale);
-
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-
-      ctx.drawImage(img, 0, 0, w, h);
-
-      canvas.toBlob(
-        b => cb(null, b),
-        "image/png"
-      );
-    };
-
-    img.onerror = err => cb(err);
-
-    img.src = svgUrl; // can trigger taint if CORS blocked
-  }
-
-  // ---------------- ELEMENT UPLOAD ----------------
-
   function uploadInlineSvg(el) {
     try {
-      const blob = inlineSvgToBlob(el);
       const meta = newPublicId();
-      cloudinaryUploadBlob(meta.publicId, blob, `${meta.publicId}.svg`,
-        res => showSuccess(res, meta),
-        () => {
-          alertV("Upload failed; saving locally.");
-          downloadBlob(blob, `${meta.publicId}.svg`);
-        });
+      const blob = inlineSvgToBlob(el);
+      cloudinaryUploadBlob(meta, blob, `${meta.publicId}.svg`);
     } catch (e) {
-      alertV("Error processing inline SVG.");
-      console.error(e);
+      console.error("Inline SVG error:", e);
+      alertV("Failed to process inline SVG.");
     }
   }
 
-  function uploadExternalSvg(el, src) {
+  // ---------------- EXTERNAL SVG (ASOS, etc.) ----------------
+
+  function uploadExternalSvg(src) {
     const meta = newPublicId();
 
-    // 1. Try direct Cloudinary server fetch
-    cloudinaryFetchUrl(
-      meta.publicId,
-      src,
-      res => showSuccess(res, meta),
-      () => {
-        // 2. Use proxy (ASOS fix)
-        fetch(PROXY_URL + encodeURIComponent(src))
-          .then(r => r.text())
-          .then(svgText => {
-            const proxyBlob = new Blob([svgText], { type: "image/svg+xml" });
+    // Always use proxy → SVG text → blob → upload
+    const proxied = PROXY_URL + encodeURIComponent(src);
 
-            // Attempt cloudinary upload of proxy SVG
-            cloudinaryUploadBlob(
-              meta.publicId,
-              proxyBlob,
-              `${meta.publicId}.svg`,
-              res => showSuccess(res, meta),
-              () => {
-                // 3. Proxy SVG → PNG fallback
-                const proxyUrl = PROXY_URL + encodeURIComponent(src);
-                svgUrlToPngBlob(proxyUrl, (err, pngBlob) => {
-                  if (err || !pngBlob) {
-                    alertV("SVG blocked even via proxy; downloading PNG locally.");
-                    if (pngBlob) downloadBlob(pngBlob, `${meta.publicId}.png`);
-                    return;
-                  }
-                  cloudinaryUploadBlob(
-                    meta.publicId,
-                    pngBlob,
-                    `${meta.publicId}.png`,
-                    res => showSuccess(res, meta),
-                    () => downloadBlob(pngBlob, `${meta.publicId}.png`)
-                  );
-                });
-              }
-            );
-          })
-          .catch(err => {
-            console.error("Proxy failed:", err);
-            alertV("ASOS SVG cannot be fetched or proxied.");
-          });
-      }
-    );
+    fetch(proxied)
+      .then(r => {
+        if (!r.ok) throw new Error("Proxy HTTP " + r.status);
+        return r.text();
+      })
+      .then(svgText => {
+        const blob = new Blob([svgText], { type: "image/svg+xml" });
+        cloudinaryUploadBlob(meta, blob, `${meta.publicId}.svg`);
+      })
+      .catch(err => {
+        console.error("Proxy fetch for SVG failed:", err);
+        alertV("Could not fetch SVG via proxy; nothing more I can do on this site.");
+      });
+  }
+
+  // ---------------- RASTER IMAGES ----------------
+
+  function dataUrlToBlob(dataUrl) {
+    const [header, data] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    const isBase64 = /base64/i.test(header);
+
+    if (isBase64) {
+      const bin = atob(data);
+      const len = bin.length;
+      const arr = new Uint8Array(len);
+      for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+      return new Blob([arr], { type: mime });
+    } else {
+      const decoded = decodeURIComponent(data);
+      const bytes = new TextEncoder().encode(decoded);
+      return new Blob([bytes], { type: mime });
+    }
   }
 
   function uploadRasterImage(src) {
     const meta = newPublicId();
-
     fetch(src)
       .then(r => r.blob())
       .then(blob => {
-        cloudinaryUploadBlob(
-          meta.publicId,
-          blob,
-          `${meta.publicId}.png`,
-          res => showSuccess(res, meta),
-          () => downloadBlob(blob, `${meta.publicId}.png`)
-        );
+        cloudinaryUploadBlob(meta, blob, `${meta.publicId}.png`);
       })
       .catch(err => {
-        console.error("Raster fetch fail:", err);
-        alertV("Could not fetch raster image.");
+        console.error("Raster fetch failed:", err);
+        alertV("Failed to fetch raster image; cannot upload.");
       });
   }
 
   function uploadImg(el) {
     const src = el.currentSrc || el.src;
-    if (!src) return alertV("Image has no src.");
+    if (!src) {
+      alertV("Selected image has no src.");
+      return;
+    }
 
     if (/\.svg(\?|#|$)/i.test(src)) {
-      uploadExternalSvg(el, src);
+      uploadExternalSvg(src);
       return;
     }
 
     if (src.startsWith("data:")) {
       const blob = dataUrlToBlob(src);
       const meta = newPublicId();
-      cloudinaryUploadBlob(
-        meta.publicId,
-        blob,
-        `${meta.publicId}.png`,
-        res => showSuccess(res, meta),
-        () => downloadBlob(blob, `${meta.publicId}.png`)
-      );
+      cloudinaryUploadBlob(meta, blob, `${meta.publicId}.png`);
       return;
     }
 
@@ -332,90 +289,112 @@ ${url}`;
 
   // ---------------- LOGO DETECTION ----------------
 
-  function score(el) {
-    let s = 0;
+  function scoreCandidate(el) {
+    let score = 0;
     const tag = el.tagName.toLowerCase();
+    const rect = el.getBoundingClientRect();
+
+    // ignore tiny icons
+    if (rect.width < 24 || rect.height < 24) return 0;
+
     const id = (el.id || "").toLowerCase();
     const cls = (el.className || "").toString().toLowerCase();
     const alt = (el.getAttribute?.("alt") || "").toLowerCase();
     const src = (el.getAttribute?.("src") || "").toLowerCase();
+    const aria = (el.getAttribute?.("aria-label") || "").toLowerCase();
 
-    const hit = w => id.includes(w) || cls.includes(w) || alt.includes(w) || src.includes(w);
+    const hit = w => id.includes(w) || cls.includes(w) || alt.includes(w) || src.includes(w) || aria.includes(w);
 
-    if (hit("logo")) s += 60;
-    if (hit("brand")) s += 30;
-    if (hit("header") || hit("nav")) s += 20;
-    if (alt.includes(BASE) || src.includes(BASE)) s += 40;
+    if (hit("logo")) score += 80;
+    if (hit("brand")) score += 40;
+    if (hit("icon")) score += 10;
 
-    const rect = el.getBoundingClientRect();
-    if (rect.width * rect.height > 50) s += 10;
-    if (rect.width > rect.height) s += 5;
+    if (BASE && (src.includes(BASE) || alt.includes(BASE) || cls.includes(BASE))) {
+      score += 40;
+    }
 
-    let p = el.parentElement, depth = 0;
-    while (p && depth < 5) {
-      const pcls = (p.className || "").toString().toLowerCase();
+    const area = rect.width * rect.height;
+    if (area > 200) score += 10;
+    if (rect.width > rect.height) score += 10;
+
+    let p = el.parentElement;
+    let depth = 0;
+    while (p && depth < 6) {
+      const tn = p.tagName.toLowerCase();
+      const pcl = (p.className || "").toString().toLowerCase();
       const pid = (p.id || "").toLowerCase();
-      if (p.tagName.toLowerCase() === "header") s += 40;
-      if (pcls.includes("header") || pcls.includes("navbar")) s += 30;
-      if (pid.includes("header")) s += 20;
+
+      if (tn === "header" || tn === "nav") score += 40;
+      if (pcl.includes("header") || pcl.includes("navbar") || pcl.includes("site-header")) {
+        score += 30;
+      }
+      if (pid.includes("header") || pid.includes("logo")) score += 30;
 
       const href = p.getAttribute && p.getAttribute("href");
-      if (href && (href === "/" || href === "")) s += 50;
+      if (href && (href === "/" || href === "")) score += 60;
 
       p = p.parentElement;
       depth++;
     }
 
-    if (tag === "svg") s += 15;
-    if (tag === "img") s += 10;
+    if (tag === "svg") score += 20;
+    if (tag === "img") score += 10;
 
-    return s;
+    return score;
   }
 
   function findCandidates() {
-    const list = [...$("img"), ...$("svg")].map(el => ({
+    const all = [...$("img"), ...$("svg")].map(el => ({
       el,
       type: el.tagName.toLowerCase(),
-      score: score(el)
+      score: scoreCandidate(el)
     }));
 
-    return list.filter(c => c.score > 0).sort((a, b) => b.score - a.score).slice(0, 12);
+    return all
+      .filter(c => c.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
   }
 
-  // ---------------- BUTTON OVERLAY ----------------
+  // ---------------- FLOATING BUTTON UI ----------------
 
   function showButtons(candidates) {
-    const exist = document.getElementById("logoGrabber-buttons-overlay");
-    if (exist) exist.remove();
+    const existing = document.getElementById("logoGrabber-buttons-overlay");
+    if (existing) existing.remove();
 
     if (!candidates.length) {
-      return alertV("No logos found on this page.");
+      alertV("No logo-like images/SVGs found on this page.");
+      return;
     }
 
     const overlay = document.createElement("div");
     overlay.id = "logoGrabber-buttons-overlay";
     overlay.style.position = "absolute";
+    overlay.style.top = "0";
+    overlay.style.left = "0";
     overlay.style.zIndex = "999999";
     document.body.appendChild(overlay);
 
-    alertV(`Detected ${candidates.length} logo candidate(s). Press ESC to cancel.`);
+    alertV(`Detected ${candidates.length} logo candidate(s).\nClick any "Grab #N" button, ESC to cancel.`);
 
     function cleanup() {
       document.removeEventListener("keydown", escHandler, true);
-      overlay.remove();
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }
 
-    function escHandler(e) {
-      if (e.key === "Escape") cleanup();
+    function escHandler(ev) {
+      if (ev.key === "Escape" || ev.key === "Esc") {
+        ev.stopPropagation();
+        cleanup();
+      }
     }
 
     document.addEventListener("keydown", escHandler, true);
 
-    candidates.forEach((c, i) => {
+    candidates.forEach((c, idx) => {
       const rect = c.el.getBoundingClientRect();
       const btn = document.createElement("button");
-
-      btn.textContent = "Grab #" + (i + 1);
+      btn.textContent = "Grab #" + (idx + 1);
       Object.assign(btn.style, {
         position: "absolute",
         top: window.scrollY + rect.top + "px",
@@ -430,14 +409,14 @@ ${url}`;
         zIndex: 1000000
       });
 
-      btn.onclick = e => {
-        e.preventDefault();
-        e.stopPropagation();
+      btn.addEventListener("click", ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
         cleanup();
 
         if (c.type === "svg") uploadInlineSvg(c.el);
         else uploadImg(c.el);
-      };
+      });
 
       overlay.appendChild(btn);
     });
@@ -445,10 +424,10 @@ ${url}`;
 
   // ---------------- ENTRY ----------------
 
-  function start() {
-    const cands = findCandidates();
-    showButtons(cands);
+  function startLogoGrabber() {
+    const candidates = findCandidates();
+    showButtons(candidates);
   }
 
-  start();
+  startLogoGrabber();
 })();
