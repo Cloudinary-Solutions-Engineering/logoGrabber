@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logo Grabber Bookmarklet</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #5d6678;
+      --border: #dde2ee;
+      --accent: #1d4ed8;
+      --accent-dark: #153ea9;
+      --code: #0f172a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top left, #e6f0ff, var(--bg) 40%);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 56px 20px;
+    }
+
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 36px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    p {
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .bookmarklet-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      margin: 28px 0;
+      padding: 20px;
+      border: 1px dashed #b8c3d9;
+      border-radius: 18px;
+      background: #f9fbff;
+    }
+
+    .bookmarklet {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 22px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      box-shadow: 0 10px 24px rgba(29, 78, 216, 0.25);
+      transition: transform 120ms ease, background 120ms ease;
+      user-select: none;
+    }
+
+    .bookmarklet:hover {
+      background: var(--accent-dark);
+      transform: translateY(-1px);
+    }
+
+    .hint {
+      margin: 0;
+      max-width: 560px;
+      font-size: 0.95rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+    }
+
+    ol,
+    ul {
+      padding-left: 1.25rem;
+      color: var(--muted);
+    }
+
+    li + li {
+      margin-top: 8px;
+    }
+
+    code,
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 16px;
+      border-radius: 14px;
+      background: var(--code);
+      color: #dbeafe;
+      font-size: 0.85rem;
+    }
+
+    .small {
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>Logo Grabber</h1>
+      <p>
+        Drag the bookmarklet below to your bookmarks bar. Then open any website and click it to find SVG logo candidates, preview them visually, and upload the selected SVG to Cloudinary.
+      </p>
+
+      <div class="bookmarklet-wrap">
+        <a
+          class="bookmarklet"
+          href="javascript:(()=>{let s=document.createElement('script');s.src='https://pglithro-cloudinary.github.io/logoGrabber/script.js?'+Date.now();document.body.append(s)})()"
+        >Logo Grabber</a>
+        <p class="hint">
+          Drag this button to your bookmarks bar. If dragging does not work, manually create a bookmark and paste the bookmarklet code from below into the URL field.
+        </p>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>First-time setup</h2>
+          <ol>
+            <li>Click the bookmarklet on any webpage.</li>
+            <li>Enter your Cloudinary cloud name.</li>
+            <li>Enter your unsigned upload preset.</li>
+            <li>Choose an upload folder, for example <code>grabbed-logos</code>.</li>
+          </ol>
+        </div>
+
+        <div class="card">
+          <h2>What it finds</h2>
+          <ul>
+            <li>Inline SVG elements.</li>
+            <li>SVGs loaded via image, object, or embed tags.</li>
+            <li>SVG symbol and sprite references where accessible.</li>
+            <li>SVGs inside open shadow roots.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Manual bookmarklet code</h2>
+      <pre><code>javascript:(()=>{let s=document.createElement('script');s.src='https://pglithro-cloudinary.github.io/logoGrabber/script.js?'+Date.now();document.body.append(s)})()</code></pre>
+
+      <p class="small">
+        Use an unsigned Cloudinary upload preset only. Do not add API secrets to a bookmarklet or client-side JavaScript file.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
