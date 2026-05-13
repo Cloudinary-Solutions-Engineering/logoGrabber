@@ -5,7 +5,7 @@
     let config = {};
 
     try {
-      config = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
+      config = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}"); 
     } catch {
       config = {};
     }
