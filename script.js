@@ -1,7 +1,37 @@
 (() => {
-  const CLOUD_NAME = "patrickg-assets";
-  const UPLOAD_PRESET = "unsignedUpload";
-  const UPLOAD_FOLDER = "";
+  const CONFIG_KEY = "logoGrabberCloudinaryConfig";
+
+  function getConfig() {
+    let config = {};
+
+    try {
+      config = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
+    } catch {
+      config = {};
+    }
+
+    if (!config.cloudName) {
+      config.cloudName = prompt("Cloudinary cloud name:", "")?.trim();
+    }
+
+    if (!config.uploadPreset) {
+      config.uploadPreset = prompt("Cloudinary unsigned upload preset:", "")?.trim();
+    }
+
+    if (!config.folder) {
+      config.folder = prompt("Cloudinary upload folder:", "grabbed-logos")?.trim() || "grabbed-logos";
+    }
+
+    if (!config.cloudName || !config.uploadPreset) {
+      alert("Cloudinary cloud name and unsigned upload preset are required.");
+      throw new Error("Missing Cloudinary configuration");
+    }
+
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    return config;
+  }
+
+  const CLOUDINARY_CONFIG = getConfig();
 
   const old = document.getElementById("lg-picker");
   if (old) old.remove();
@@ -79,7 +109,14 @@
       const svg = el.closest("svg");
 
       if (svg) add(svg, "inline SVG symbol");
-      if (href && /\.svg($|[?#])/i.test(href)) add(el, "SVG sprite", new URL(href, location.href).href);
+
+      if (href && /\.svg($|[?#])/i.test(href)) {
+        try {
+          add(el, "SVG sprite", new URL(href, location.href).href);
+        } catch {
+          add(el, "SVG sprite", href);
+        }
+      }
     });
 
     root.querySelectorAll?.("*").forEach(el => {
@@ -131,6 +168,11 @@
         margin-bottom: 16px;
       }
 
+      #lg-picker .h-actions {
+        display: flex;
+        gap: 8px;
+      }
+
       #lg-picker .g {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -170,6 +212,7 @@
         font-size: 12px;
         color: #555;
         min-height: 76px;
+        word-break: break-word;
       }
 
       #lg-picker .m b {
@@ -184,7 +227,8 @@
 
       #lg-picker .a a,
       #lg-picker .a button,
-      #lg-picker #lg-close {
+      #lg-picker #lg-close,
+      #lg-picker #lg-settings {
         border: 0;
         border-radius: 8px;
         padding: 8px 10px;
@@ -210,7 +254,8 @@
         cursor: wait;
       }
 
-      #lg-picker #lg-close {
+      #lg-picker #lg-close,
+      #lg-picker #lg-settings {
         background: #eee;
         color: #111;
       }
@@ -218,8 +263,19 @@
 
     <div class="p">
       <div class="h">
-        <b>${found.length} SVG candidate${found.length === 1 ? "" : "s"} found</b>
-        <button id="lg-close">Close</button>
+        <div>
+          <b>${found.length} SVG candidate${found.length === 1 ? "" : "s"} found</b><br>
+          <small>
+            Uploading to Cloudinary cloud:
+            <b>${esc(CLOUDINARY_CONFIG.cloudName)}</b>,
+            folder:
+            <b>${esc(CLOUDINARY_CONFIG.folder)}</b>
+          </small>
+        </div>
+        <div class="h-actions">
+          <button id="lg-settings">Settings</button>
+          <button id="lg-close">Close</button>
+        </div>
       </div>
       <div class="g"></div>
     </div>
@@ -263,7 +319,11 @@
         blob = new Blob([svgText], { type: "image/svg+xml" });
       } else {
         const res = await fetch(x.data);
-        if (!res.ok) throw new Error("Could not fetch external SVG");
+
+        if (!res.ok) {
+          throw new Error("Could not fetch external SVG");
+        }
+
         blob = await res.blob();
       }
 
@@ -273,11 +333,11 @@
 
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("upload_preset", UPLOAD_PRESET);
-      fd.append("folder", UPLOAD_FOLDER);
+      fd.append("upload_preset", CLOUDINARY_CONFIG.uploadPreset);
+      fd.append("folder", CLOUDINARY_CONFIG.folder);
       fd.append("tags", "logo-grabber,svg,logo");
 
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloudName}/image/upload`, {
         method: "POST",
         body: fd
       });
@@ -288,7 +348,7 @@
         throw new Error(json.error?.message || "Cloudinary upload failed");
       }
 
-      btn.textContent = "Uploaded ✓";
+      btn.textContent = "Open ✓";
       btn.disabled = false;
       btn.onclick = () => window.open(json.secure_url, "_blank");
     } catch (e) {
@@ -304,6 +364,11 @@
       uploadToCloudinary(found[i], i, btn);
     };
   });
+
+  box.querySelector("#lg-settings").onclick = () => {
+    localStorage.removeItem(CONFIG_KEY);
+    alert("Saved Cloudinary settings cleared. Re-run the bookmarklet to enter new settings.");
+  };
 
   box.querySelector("#lg-close").onclick = () => box.remove();
 
