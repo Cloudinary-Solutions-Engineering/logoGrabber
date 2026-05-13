@@ -1,433 +1,101 @@
-(function () {
-  const SCRIPT_VERSION = "5.0.0";
-  console.log("LogoGrabber script loaded. Version:", SCRIPT_VERSION);
+(() => {
+  const old = document.getElementById("lg-picker");
+  if (old) old.remove();
 
-  const CLOUD_NAME = "patrickg-assets";
-  const UPLOAD_PRESET = "unsignedUpload";
-  const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`;
-  const PROXY_URL = "https://api.allorigins.win/raw?url=";
+  const found = [];
+  const seen = new Set();
 
-  const XLINK = "http://www.w3.org/1999/xlink";
-  const $ = (q, r = document) => Array.from(r.querySelectorAll(q));
-  const makeNS = n => document.createElementNS("http://www.w3.org/2000/svg", n);
+  const esc = s => String(s || "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
 
-  function alertV(msg) {
-    alert(`LogoGrabber v${SCRIPT_VERSION}\n\n${msg}`);
-  }
+  const add = (el, type, src) => {
+    const key = src || el;
+    if (seen.has(key)) return;
+    seen.add(key);
 
-  // ---------------- DOMAIN NAMING ----------------
+    const r = el.getBoundingClientRect?.() || {};
+    let data = src;
 
-  function getBaseDomain() {
-    try {
-      let d = location.hostname.toLowerCase();
-      d = d.replace(/^www\./, "").replace(/\./g, "_").replace(/[^a-z0-9_]/g, "");
-      return d || "site";
-    } catch {
-      return "site";
-    }
-  }
-
-  const BASE = getBaseDomain();
-
-  function nextVersion(base) {
-    const key = "logoGrab_" + base + "_v";
-    try {
-      let v = parseInt(localStorage.getItem(key) || "0", 10) || 0;
-      v++;
-      localStorage.setItem(key, String(v));
-      return v;
-    } catch {
-      return Date.now();
-    }
-  }
-
-  function newPublicId() {
-    const version = nextVersion(BASE);
-    return {
-      base: BASE,
-      version,
-      publicId: `${BASE}_logo_v${version}`
-    };
-  }
-
-  // ---------------- GENERIC UPLOAD HELPERS ----------------
-
-  function downloadBlob(blob, name) {
-    try {
-      const a = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      a.href = url;
-      a.download = name || "logo";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-    } catch (e) {
-      console.error("Download failed:", e);
-      alertV("Local download failed (see console).");
-    }
-  }
-
-  function cloudinaryUploadBlob(meta, blob, filename, onDone) {
-    const fd = new FormData();
-    fd.append("file", blob, filename || meta.publicId);
-    fd.append("public_id", meta.publicId);
-    fd.append("upload_preset", UPLOAD_PRESET);
-
-    fetch(UPLOAD_URL, { method: "POST", body: fd })
-      .then(r => r.json())
-      .then(json => {
-        if (!json || json.error) {
-          console.error("Cloudinary error:", json && json.error);
-          alertV("Cloudinary upload failed.\nI'll download the file locally instead.");
-          downloadBlob(blob, filename || (meta.publicId + ".svg"));
-        } else {
-          showSuccess(json, meta);
-        }
-        if (onDone) onDone(json);
-      })
-      .catch(err => {
-        console.error("Cloudinary crash:", err);
-        alertV("Cloudinary upload crashed.\nI'll download the file locally instead.");
-        downloadBlob(blob, filename || (meta.publicId + ".svg"));
-        if (onDone) onDone(null);
-      });
-  }
-
-  function showSuccess(result, meta) {
-    const url = result.secure_url || result.url;
-    if (!url) {
-      alertV("Upload succeeded but no URL returned.");
-      console.log("Cloudinary response:", result);
-      return;
+    if (!src && el.tagName?.toLowerCase() === "svg") {
+      const c = el.cloneNode(true);
+      if (!c.getAttribute("xmlns")) c.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      data = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(c));
     }
 
-    const msg =
-      `Uploaded ✔️
-Domain: ${meta.base}
-Version: v${meta.version}
-public_id: ${meta.publicId}
+    const txt = [
+      el.id,
+      el.className,
+      el.getAttribute?.("alt"),
+      el.getAttribute?.("title"),
+      el.getAttribute?.("aria-label"),
+      el.closest?.("[class]")?.className,
+      el.closest?.("[id]")?.id
+    ].filter(Boolean).join(" ");
 
-URL:
-${url}`;
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url)
-        .then(() => alertV(msg + "\n(URL copied to clipboard)"))
-        .catch(() => alertV(msg));
-    } else {
-      alertV(msg);
-    }
-  }
-
-  // ---------------- INLINE SVG PROCESSING ----------------
-
-  function copyDefs(svg) {
-    const defs = svg.querySelector("defs") || svg.insertBefore(makeNS("defs"), svg.firstChild);
-    const seen = new Set(Array.from(defs.children).map(n => n.id).filter(Boolean));
-    $("svg defs").forEach(d => {
-      Array.from(d.children).forEach(node => {
-        if (node.nodeType === 1 && (!node.id || !seen.has(node.id))) {
-          defs.appendChild(node.cloneNode(true));
-          if (node.id) seen.add(node.id);
-        }
-      });
-    });
-  }
-
-  function expandUse(svg) {
-    $("use", svg).forEach(use => {
-      const ref =
-        use.getAttribute("href") ||
-        use.getAttributeNS(XLINK, "href") ||
-        use.getAttribute("xlink:href");
-      if (!ref) return;
-
-      const parts = ref.split("#");
-      if (parts.length < 2) return;
-      const id = parts[1];
-      const srcEl = document.getElementById(id);
-      if (!srcEl) return;
-
-      const g = makeNS("g");
-      use.getAttributeNames().forEach(a => {
-        if (a !== "href" && a !== "xlink:href") {
-          g.setAttribute(a, use.getAttribute(a));
-        }
-      });
-
-      if (srcEl.tagName.toLowerCase() === "symbol") {
-        if (!svg.hasAttribute("viewBox") && srcEl.hasAttribute("viewBox")) {
-          svg.setAttribute("viewBox", srcEl.getAttribute("viewBox"));
-        }
-        srcEl.childNodes.forEach(n => g.appendChild(n.cloneNode(true)));
-      } else {
-        g.appendChild(srcEl.cloneNode(true));
-      }
-
-      use.replaceWith(g);
-    });
-  }
-
-  function cleanSvg(svg) {
-    svg.style.outline = "";
-    svg.removeAttribute("style");
-    svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    svg.setAttribute("xmlns:xlink", XLINK);
-
-    const vb = svg.getAttribute("viewBox");
-    if (vb && (!svg.getAttribute("width") || !svg.getAttribute("height"))) {
-      const vals = vb.split(/\s+/).map(Number);
-      if (vals.length === 4) {
-        const w = vals[2], h = vals[3];
-        if (w > 0 && h > 0) {
-          svg.setAttribute("width", w);
-          svg.setAttribute("height", h);
-        }
-      }
-    }
-  }
-
-  function inlineSvgToBlob(svg) {
-    cleanSvg(svg);
-    expandUse(svg);
-    copyDefs(svg);
-    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
-                new XMLSerializer().serializeToString(svg);
-    return new Blob([xml], { type: "image/svg+xml" });
-  }
-
-  function uploadInlineSvg(el) {
-    try {
-      const meta = newPublicId();
-      const blob = inlineSvgToBlob(el);
-      cloudinaryUploadBlob(meta, blob, `${meta.publicId}.svg`);
-    } catch (e) {
-      console.error("Inline SVG error:", e);
-      alertV("Failed to process inline SVG.");
-    }
-  }
-
-  // ---------------- EXTERNAL SVG (ASOS, etc.) ----------------
-
-  function uploadExternalSvg(src) {
-    const meta = newPublicId();
-
-    // Always use proxy → SVG text → blob → upload
-    const proxied = PROXY_URL + encodeURIComponent(src);
-
-    fetch(proxied)
-      .then(r => {
-        if (!r.ok) throw new Error("Proxy HTTP " + r.status);
-        return r.text();
-      })
-      .then(svgText => {
-        const blob = new Blob([svgText], { type: "image/svg+xml" });
-        cloudinaryUploadBlob(meta, blob, `${meta.publicId}.svg`);
-      })
-      .catch(err => {
-        console.error("Proxy fetch for SVG failed:", err);
-        alertV("Could not fetch SVG via proxy; nothing more I can do on this site.");
-      });
-  }
-
-  // ---------------- RASTER IMAGES ----------------
-
-  function dataUrlToBlob(dataUrl) {
-    const [header, data] = dataUrl.split(",");
-    const mimeMatch = header.match(/data:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
-    const isBase64 = /base64/i.test(header);
-
-    if (isBase64) {
-      const bin = atob(data);
-      const len = bin.length;
-      const arr = new Uint8Array(len);
-      for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
-      return new Blob([arr], { type: mime });
-    } else {
-      const decoded = decodeURIComponent(data);
-      const bytes = new TextEncoder().encode(decoded);
-      return new Blob([bytes], { type: mime });
-    }
-  }
-
-  function uploadRasterImage(src) {
-    const meta = newPublicId();
-    fetch(src)
-      .then(r => r.blob())
-      .then(blob => {
-        cloudinaryUploadBlob(meta, blob, `${meta.publicId}.png`);
-      })
-      .catch(err => {
-        console.error("Raster fetch failed:", err);
-        alertV("Failed to fetch raster image; cannot upload.");
-      });
-  }
-
-  function uploadImg(el) {
-    const src = el.currentSrc || el.src;
-    if (!src) {
-      alertV("Selected image has no src.");
-      return;
-    }
-
-    if (/\.svg(\?|#|$)/i.test(src)) {
-      uploadExternalSvg(src);
-      return;
-    }
-
-    if (src.startsWith("data:")) {
-      const blob = dataUrlToBlob(src);
-      const meta = newPublicId();
-      cloudinaryUploadBlob(meta, blob, `${meta.publicId}.png`);
-      return;
-    }
-
-    uploadRasterImage(src);
-  }
-
-  // ---------------- LOGO DETECTION ----------------
-
-  function scoreCandidate(el) {
     let score = 0;
-    const tag = el.tagName.toLowerCase();
-    const rect = el.getBoundingClientRect();
+    if (/logo|brand|header|nav/i.test(txt)) score += 50;
+    if (r.top < 200) score += 20;
+    if (r.width > 30 && r.height > 10) score += 20;
+    if (/icon|sprite|social/i.test(txt)) score -= 20;
 
-    // ignore tiny icons
-    if (rect.width < 24 || rect.height < 24) return 0;
+    found.push({ el, type, data, txt, r, score });
+  };
 
-    const id = (el.id || "").toLowerCase();
-    const cls = (el.className || "").toString().toLowerCase();
-    const alt = (el.getAttribute?.("alt") || "").toLowerCase();
-    const src = (el.getAttribute?.("src") || "").toLowerCase();
-    const aria = (el.getAttribute?.("aria-label") || "").toLowerCase();
-
-    const hit = w => id.includes(w) || cls.includes(w) || alt.includes(w) || src.includes(w) || aria.includes(w);
-
-    if (hit("logo")) score += 80;
-    if (hit("brand")) score += 40;
-    if (hit("icon")) score += 10;
-
-    if (BASE && (src.includes(BASE) || alt.includes(BASE) || cls.includes(BASE))) {
-      score += 40;
-    }
-
-    const area = rect.width * rect.height;
-    if (area > 200) score += 10;
-    if (rect.width > rect.height) score += 10;
-
-    let p = el.parentElement;
-    let depth = 0;
-    while (p && depth < 6) {
-      const tn = p.tagName.toLowerCase();
-      const pcl = (p.className || "").toString().toLowerCase();
-      const pid = (p.id || "").toLowerCase();
-
-      if (tn === "header" || tn === "nav") score += 40;
-      if (pcl.includes("header") || pcl.includes("navbar") || pcl.includes("site-header")) {
-        score += 30;
-      }
-      if (pid.includes("header") || pid.includes("logo")) score += 30;
-
-      const href = p.getAttribute && p.getAttribute("href");
-      if (href && (href === "/" || href === "")) score += 60;
-
-      p = p.parentElement;
-      depth++;
-    }
-
-    if (tag === "svg") score += 20;
-    if (tag === "img") score += 10;
-
-    return score;
-  }
-
-  function findCandidates() {
-    const all = [...$("img"), ...$("svg")].map(el => ({
-      el,
-      type: el.tagName.toLowerCase(),
-      score: scoreCandidate(el)
-    }));
-
-    return all
-      .filter(c => c.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 12);
-  }
-
-  // ---------------- FLOATING BUTTON UI ----------------
-
-  function showButtons(candidates) {
-    const existing = document.getElementById("logoGrabber-buttons-overlay");
-    if (existing) existing.remove();
-
-    if (!candidates.length) {
-      alertV("No logo-like images/SVGs found on this page.");
-      return;
-    }
-
-    const overlay = document.createElement("div");
-    overlay.id = "logoGrabber-buttons-overlay";
-    overlay.style.position = "absolute";
-    overlay.style.top = "0";
-    overlay.style.left = "0";
-    overlay.style.zIndex = "999999";
-    document.body.appendChild(overlay);
-
-    alertV(`Detected ${candidates.length} logo candidate(s).\nClick any "Grab #N" button, ESC to cancel.`);
-
-    function cleanup() {
-      document.removeEventListener("keydown", escHandler, true);
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    }
-
-    function escHandler(ev) {
-      if (ev.key === "Escape" || ev.key === "Esc") {
-        ev.stopPropagation();
-        cleanup();
-      }
-    }
-
-    document.addEventListener("keydown", escHandler, true);
-
-    candidates.forEach((c, idx) => {
-      const rect = c.el.getBoundingClientRect();
-      const btn = document.createElement("button");
-      btn.textContent = "Grab #" + (idx + 1);
-      Object.assign(btn.style, {
-        position: "absolute",
-        top: window.scrollY + rect.top + "px",
-        left: window.scrollX + rect.left + "px",
-        background: "rgba(0,0,0,0.85)",
-        color: "#fff",
-        padding: "3px 6px",
-        borderRadius: "4px",
-        border: "1px solid #333",
-        fontSize: "11px",
-        cursor: "pointer",
-        zIndex: 1000000
-      });
-
-      btn.addEventListener("click", ev => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        cleanup();
-
-        if (c.type === "svg") uploadInlineSvg(c.el);
-        else uploadImg(c.el);
-      });
-
-      overlay.appendChild(btn);
+  const scan = root => {
+    root.querySelectorAll?.("svg").forEach(el => add(el, "inline"));
+    root.querySelectorAll?.("img[src],object[data],embed[src]").forEach(el => {
+      const src = el.src || el.data || el.getAttribute("src") || el.getAttribute("data");
+      if (/\.svg($|[?#])/i.test(src) || /^data:image\/svg/i.test(src)) add(el, "file", src);
     });
-  }
+    root.querySelectorAll?.("*").forEach(el => el.shadowRoot && scan(el.shadowRoot));
+  };
 
-  // ---------------- ENTRY ----------------
+  scan(document);
+  found.sort((a, b) => b.score - a.score);
 
-  function startLogoGrabber() {
-    const candidates = findCandidates();
-    showButtons(candidates);
-  }
+  if (!found.length) return alert("No SVGs found");
 
-  startLogoGrabber();
+  const box = document.createElement("div");
+  box.id = "lg-picker";
+  box.innerHTML = `
+    <style>
+      #lg-picker{position:fixed;inset:0;z-index:999999999;background:#0009;font:14px system-ui}
+      #lg-picker .p{position:absolute;inset:30px;background:white;border-radius:14px;overflow:auto;padding:20px}
+      #lg-picker .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+      #lg-picker .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+      #lg-picker .c{border:1px solid #ddd;border-radius:10px;overflow:hidden;background:#fff}
+      #lg-picker .v{height:120px;display:flex;align-items:center;justify-content:center;padding:16px;background:#f7f7f7}
+      #lg-picker img{max-width:100%;max-height:100%;object-fit:contain}
+      #lg-picker .m{padding:10px;font-size:12px;color:#555}
+      #lg-picker a{display:block;margin:0 10px 10px;padding:8px;border-radius:7px;background:#111;color:white;text-align:center;text-decoration:none}
+      #lg-picker button{border:0;border-radius:99px;padding:8px 12px;cursor:pointer}
+    </style>
+    <div class="p">
+      <div class="h">
+        <b>${found.length} SVG candidate${found.length === 1 ? "" : "s"} found</b>
+        <button id="lg-close">Close</button>
+      </div>
+      <div class="g"></div>
+    </div>`;
+
+  const grid = box.querySelector(".g");
+
+  found.forEach((x, i) => {
+    const c = document.createElement("div");
+    c.className = "c";
+    c.innerHTML = `
+      <div class="v"><img src="${esc(x.data)}"></div>
+      <div class="m">
+        <b>${i === 0 ? "Best guess — " : ""}${x.type}</b><br>
+        ${Math.round(x.r.width || 0)} × ${Math.round(x.r.height || 0)}px<br>
+        ${esc(x.txt).slice(0, 120)}
+      </div>
+      <a href="${esc(x.data)}" download="logo-${i + 1}.svg" target="_blank">Download / open</a>`;
+    grid.appendChild(c);
+  });
+
+  box.querySelector("#lg-close").onclick = () => box.remove();
+  box.onclick = e => { if (e.target === box) box.remove(); };
+  document.body.append(box);
 })();
