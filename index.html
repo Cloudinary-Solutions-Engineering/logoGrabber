@@ -147,7 +147,7 @@
     <section class="hero">
       <h1>Logo Grabber</h1>
       <p>
-        Drag the bookmarklet below to your bookmarks bar. Then open any website and click it to find SVG logo candidates, preview them visually, and upload the selected SVG to Cloudinary.
+        Drag the bookmarklet below to your bookmarks bar. Then open any website and click it to find SVG logo candidates, preview them visually, download them, or upload the selected SVG to Cloudinary.
       </p>
 
       <div class="bookmarklet-wrap">
@@ -167,8 +167,10 @@
             <li>Click the bookmarklet on any webpage.</li>
             <li>Enter your Cloudinary cloud name.</li>
             <li>Enter your unsigned upload preset.</li>
-            <li>Choose an upload folder, for example <code>grabbed-logos</code>.</li>
           </ol>
+          <p class="small">
+            The tool does not ask for or send a separate upload folder. Configure any folder or delivery path behaviour directly in your Cloudinary upload preset.
+          </p>
         </div>
 
         <div class="card">
@@ -180,10 +182,25 @@
             <li>SVGs inside open shadow roots.</li>
           </ul>
         </div>
+
+        <div class="card">
+          <h2>Asset names</h2>
+          <p class="small">
+            Downloads and uploads are named from the root domain of the current website, followed by <code>_logo</code>.
+            For example, <code>www.example.com</code> becomes <code>example.com_logo.svg</code>.
+          </p>
+        </div>
+
+        <div class="card">
+          <h2>Candidate order</h2>
+          <p class="small">
+            SVG candidates are sorted by rendered pixel size, largest first, to help push small icons and site furniture lower in the picker.
+          </p>
+        </div>
       </div>
 
       <h2>Manual bookmarklet code</h2>
-      <pre><code>javascript:(()=>{let s=document.createElement('script');s.src='https://pglithro-cloudinary.github.io/logoGrabber/script.js?'+Date.now();document.body.append(s)})()</code></pre>
+      <pre><code>javascript:(()=>{let s=document.createElement('script');s.src='https://cloudinary-solutions-engineering.github.io/logoGrabber/script.js?'+Date.now();document.body.append(s)})()</code></pre>
 
       <p class="small">
         Use an unsigned Cloudinary upload preset only. Do not add API secrets to a bookmarklet or client-side JavaScript file.
