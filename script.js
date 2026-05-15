@@ -1,5 +1,5 @@
 (() => {
-  const CLOUDINARY_CONFIG = window.LOGO_GRABBER_CONFIG || getConfig();
+  const CONFIG_KEY = "logoGrabberCloudinaryConfig";
 
   function getConfig() {
     let config = {};
@@ -42,15 +42,19 @@
     if (parts.length <= 2) return host || "website";
 
     const twoPartTlds = new Set([
-      "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au",
-      "co.nz", "com.br", "com.mx", "co.jp", "co.in", "com.sg", "com.tr"
+      "co.uk", "org.uk", "ac.uk", "gov.uk",
+      "com.au", "net.au", "org.au",
+      "co.nz", "com.br", "com.mx",
+      "co.jp", "co.in", "com.sg", "com.tr"
     ]);
 
     const lastTwo = parts.slice(-2).join(".");
-    return twoPartTlds.has(lastTwo) ? parts.slice(-3).join(".") : parts.slice(-2).join(".");
+    return twoPartTlds.has(lastTwo)
+      ? parts.slice(-3).join(".")
+      : parts.slice(-2).join(".");
   }
 
-  const CLOUDINARY_CONFIG = getConfig();
+  const CLOUDINARY_CONFIG = window.LOGO_GRABBER_CONFIG || getConfig();
   const PUBLIC_ID = `${rootDomain(location.hostname)}_logo`;
   const DOWNLOAD_NAME = `${PUBLIC_ID}.svg`;
 
@@ -184,7 +188,10 @@
         margin-bottom: 16px;
       }
 
-      #lg-picker .h-actions { display: flex; gap: 8px; }
+      #lg-picker .h-actions {
+        display: flex;
+        gap: 8px;
+      }
 
       #lg-picker .g {
         display: grid;
@@ -228,7 +235,9 @@
         word-break: break-word;
       }
 
-      #lg-picker .m b { color: #111; }
+      #lg-picker .m b {
+        color: #111;
+      }
 
       #lg-picker .a {
         display: flex;
@@ -256,8 +265,14 @@
         color: #fff;
       }
 
-      #lg-picker .a button { background: #0078ff; }
-      #lg-picker .a button:disabled { opacity: .7; cursor: wait; }
+      #lg-picker .a button {
+        background: #0078ff;
+      }
+
+      #lg-picker .a button:disabled {
+        opacity: .7;
+        cursor: wait;
+      }
 
       #lg-picker #lg-close,
       #lg-picker #lg-settings {
@@ -331,7 +346,9 @@
         blob = await res.blob();
       }
 
-      const file = new File([blob], DOWNLOAD_NAME, { type: "image/svg+xml" });
+      const file = new File([blob], DOWNLOAD_NAME, {
+        type: "image/svg+xml"
+      });
 
       const fd = new FormData();
       fd.append("file", file);
@@ -366,7 +383,9 @@
 
   box.querySelector("#lg-settings").onclick = () => {
     localStorage.removeItem(CONFIG_KEY);
-    alert("Saved Cloudinary settings cleared. Re-run the bookmarklet to enter new settings.");
+    alert(
+      "Saved fallback Cloudinary settings cleared. If you are using a personalised bookmarklet, update your details on the install page and drag the bookmarklet again."
+    );
   };
 
   box.querySelector("#lg-close").onclick = () => box.remove();
