@@ -15,6 +15,7 @@
       --accent: #1d4ed8;
       --accent-dark: #153ea9;
       --code: #0f172a;
+      --success: #047857;
     }
 
     * {
@@ -30,7 +31,7 @@
     }
 
     main {
-      max-width: 880px;
+      max-width: 920px;
       margin: 0 auto;
       padding: 56px 20px;
     }
@@ -50,9 +51,52 @@
       letter-spacing: -0.04em;
     }
 
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+    }
+
     p {
       color: var(--muted);
       font-size: 1rem;
+    }
+
+    .config {
+      margin: 28px 0;
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: #f9fbff;
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid #b8c3d9;
+      border-radius: 10px;
+      font: inherit;
+      color: var(--text);
+      background: #fff;
+    }
+
+    input:focus {
+      outline: 3px solid rgba(29, 78, 216, 0.16);
+      border-color: var(--accent);
     }
 
     .bookmarklet-wrap {
@@ -60,11 +104,11 @@
       flex-wrap: wrap;
       align-items: center;
       gap: 16px;
-      margin: 28px 0;
+      margin: 22px 0 0;
       padding: 20px;
       border: 1px dashed #b8c3d9;
       border-radius: 18px;
-      background: #f9fbff;
+      background: #fff;
     }
 
     .bookmarklet {
@@ -79,8 +123,9 @@
       text-decoration: none;
       font-weight: 700;
       box-shadow: 0 10px 24px rgba(29, 78, 216, 0.25);
-      transition: transform 120ms ease, background 120ms ease;
+      transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
       user-select: none;
+      white-space: nowrap;
     }
 
     .bookmarklet:hover {
@@ -88,10 +133,27 @@
       transform: translateY(-1px);
     }
 
+    .bookmarklet.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+      box-shadow: none;
+    }
+
     .hint {
       margin: 0;
-      max-width: 560px;
+      max-width: 620px;
       font-size: 0.95rem;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .status.ready {
+      color: var(--success);
+      font-weight: 700;
     }
 
     .grid {
@@ -106,11 +168,6 @@
       border: 1px solid var(--border);
       border-radius: 18px;
       padding: 22px;
-    }
-
-    h2 {
-      margin: 0 0 10px;
-      font-size: 1.1rem;
     }
 
     ol,
@@ -147,26 +204,45 @@
     <section class="hero">
       <h1>Logo Grabber</h1>
       <p>
-        Drag the bookmarklet below to your bookmarks bar. Then open any website and click it to find SVG logo candidates, preview them visually, download them, or upload the selected SVG to Cloudinary.
+        Create a personalised bookmarklet, drag it to your bookmarks bar, then use it on any website to find SVG logo candidates, preview them visually, download them, or upload the selected SVG to Cloudinary.
       </p>
 
-      <div class="bookmarklet-wrap">
-        <a
-          class="bookmarklet"
-          href="javascript:(()=>{let s=document.createElement('script');s.src='https://cloudinary-solutions-engineering.github.io/logoGrabber/script.js?'+Date.now();document.body.append(s)})()"
-        >SVG Logo Grabber</a>
-        <p class="hint">
-          Drag this button to your bookmarks bar. If dragging does not work, manually create a bookmark and paste the bookmarklet code from below into the URL field.
+      <section class="config" aria-labelledby="config-heading">
+        <h2 id="config-heading">Create your bookmarklet</h2>
+        <p class="small">
+          Enter your Cloudinary details below. They are embedded into your bookmarklet locally in this browser and are not submitted anywhere by this page.
         </p>
-      </div>
+
+        <div class="fields">
+          <div>
+            <label for="cloud-name">Cloudinary cloud name</label>
+            <input id="cloud-name" type="text" autocomplete="off" placeholder="e.g. demo">
+          </div>
+
+          <div>
+            <label for="upload-preset">Unsigned upload preset</label>
+            <input id="upload-preset" type="text" autocomplete="off" placeholder="e.g. logo_grabber_unsigned">
+          </div>
+        </div>
+
+        <div class="bookmarklet-wrap">
+          <a id="bookmarklet" class="bookmarklet disabled" href="#">SVG Logo Grabber</a>
+          <p class="hint">
+            Fill in both fields, then drag this button to your bookmarks bar. If dragging does not work, manually create a bookmark and paste the generated bookmarklet code from below into the URL field.
+          </p>
+        </div>
+
+        <p id="status" class="status">Enter your cloud name and unsigned upload preset to generate the bookmarklet.</p>
+      </section>
 
       <div class="grid">
         <div class="card">
           <h2>First-time setup</h2>
           <ol>
-            <li>Click the bookmarklet on any webpage.</li>
             <li>Enter your Cloudinary cloud name.</li>
             <li>Enter your unsigned upload preset.</li>
+            <li>Drag the generated bookmarklet to your bookmarks bar.</li>
+            <li>Open a website and click the bookmarklet.</li>
           </ol>
           <p class="small">
             The tool does not ask for or send a separate upload folder. Configure any folder or delivery path behaviour directly in your Cloudinary upload preset.
@@ -199,13 +275,65 @@
         </div>
       </div>
 
-      <h2>Manual bookmarklet code</h2>
-      <pre><code>javascript:(()=>{let s=document.createElement('script');s.src='https://cloudinary-solutions-engineering.github.io/logoGrabber/script.js?'+Date.now();document.body.append(s)})()</code></pre>
+      <h2>Generated bookmarklet code</h2>
+      <pre><code id="manual-code">Enter your details above to generate the bookmarklet code.</code></pre>
 
       <p class="small">
         Use an unsigned Cloudinary upload preset only. Do not add API secrets to a bookmarklet or client-side JavaScript file.
       </p>
     </section>
   </main>
+
+  <script>
+    const SCRIPT_URL = "https://cloudinary-solutions-engineering.github.io/logoGrabber/script.js";
+    const cloudNameInput = document.getElementById("cloud-name");
+    const uploadPresetInput = document.getElementById("upload-preset");
+    const bookmarklet = document.getElementById("bookmarklet");
+    const manualCode = document.getElementById("manual-code");
+    const status = document.getElementById("status");
+
+    function safeValue(value) {
+      return String(value || "").trim();
+    }
+
+    function makeBookmarklet(cloudName, uploadPreset) {
+      const config = {
+        cloudName,
+        uploadPreset
+      };
+
+      return "javascript:(()=>{window.LOGO_GRABBER_CONFIG=" +
+        encodeURIComponent(JSON.stringify(config)).replace(/%22/g, "'") +
+        ";let s=document.createElement('script');s.src='" +
+        SCRIPT_URL +
+        "?'+Date.now();document.body.append(s)})()";
+    }
+
+    function updateBookmarklet() {
+      const cloudName = safeValue(cloudNameInput.value);
+      const uploadPreset = safeValue(uploadPresetInput.value);
+
+      if (!cloudName || !uploadPreset) {
+        bookmarklet.href = "#";
+        bookmarklet.classList.add("disabled");
+        manualCode.textContent = "Enter your details above to generate the bookmarklet code.";
+        status.textContent = "Enter your cloud name and unsigned upload preset to generate the bookmarklet.";
+        status.classList.remove("ready");
+        return;
+      }
+
+      const code = makeBookmarklet(cloudName, uploadPreset);
+
+      bookmarklet.href = code;
+      bookmarklet.classList.remove("disabled");
+      manualCode.textContent = code;
+      status.textContent = "Bookmarklet ready. Drag the SVG Logo Grabber button to your bookmarks bar.";
+      status.classList.add("ready");
+    }
+
+    cloudNameInput.addEventListener("input", updateBookmarklet);
+    uploadPresetInput.addEventListener("input", updateBookmarklet);
+    updateBookmarklet();
+  </script>
 </body>
 </html>
