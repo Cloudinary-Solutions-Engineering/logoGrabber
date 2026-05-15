@@ -247,8 +247,7 @@
 
       #lg-picker .a a,
       #lg-picker .a button,
-      #lg-picker #lg-close,
-      #lg-picker #lg-settings {
+      #lg-picker #lg-close {
         border: 0;
         border-radius: 8px;
         padding: 8px 10px;
@@ -274,8 +273,7 @@
         cursor: wait;
       }
 
-      #lg-picker #lg-close,
-      #lg-picker #lg-settings {
+      #lg-picker #lg-close {
         background: #eee;
         color: #111;
       }
@@ -292,7 +290,6 @@
           </small>
         </div>
         <div class="h-actions">
-          <button id="lg-settings">Settings</button>
           <button id="lg-close">Close</button>
         </div>
       </div>
@@ -380,13 +377,6 @@
   box.querySelectorAll("button[data-i]").forEach(btn => {
     btn.onclick = () => uploadToCloudinary(found[Number(btn.dataset.i)], btn);
   });
-
-  box.querySelector("#lg-settings").onclick = () => {
-    localStorage.removeItem(CONFIG_KEY);
-    alert(
-      "Saved fallback Cloudinary settings cleared. If you are using a personalised bookmarklet, update your details on the install page and drag the bookmarklet again."
-    );
-  };
 
   box.querySelector("#lg-close").onclick = () => box.remove();
 
