@@ -5,7 +5,7 @@
     let config = {};
 
     try {
-      config = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}"); 
+      config = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
     } catch {
       config = {};
     }
@@ -18,20 +18,41 @@
       config.uploadPreset = prompt("Cloudinary unsigned upload preset:", "")?.trim();
     }
 
-    if (!config.folder) {
-      config.folder = prompt("Cloudinary upload folder:", "grabbed-logos")?.trim() || "grabbed-logos";
-    }
-
     if (!config.cloudName || !config.uploadPreset) {
       alert("Cloudinary cloud name and unsigned upload preset are required.");
       throw new Error("Missing Cloudinary configuration");
     }
 
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    localStorage.setItem(CONFIG_KEY, JSON.stringify({
+      cloudName: config.cloudName,
+      uploadPreset: config.uploadPreset
+    }));
+
     return config;
   }
 
+  function rootDomain(hostname) {
+    const host = String(hostname || location.hostname)
+      .toLowerCase()
+      .replace(/^www\./, "")
+      .replace(/[^a-z0-9.-]/g, "")
+      .replace(/^\.+|\.+$/g, "");
+
+    const parts = host.split(".").filter(Boolean);
+    if (parts.length <= 2) return host || "website";
+
+    const twoPartTlds = new Set([
+      "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au",
+      "co.nz", "com.br", "com.mx", "co.jp", "co.in", "com.sg", "com.tr"
+    ]);
+
+    const lastTwo = parts.slice(-2).join(".");
+    return twoPartTlds.has(lastTwo) ? parts.slice(-3).join(".") : parts.slice(-2).join(".");
+  }
+
   const CLOUDINARY_CONFIG = getConfig();
+  const PUBLIC_ID = `${rootDomain(location.hostname)}_logo`;
+  const DOWNLOAD_NAME = `${PUBLIC_ID}.svg`;
 
   const old = document.getElementById("lg-picker");
   if (old) old.remove();
@@ -53,6 +74,9 @@
     seen.add(key);
 
     const r = el.getBoundingClientRect?.() || {};
+    const width = Math.round(r.width || 0);
+    const height = Math.round(r.height || 0);
+    const area = width * height;
     let data = src;
 
     if (!src && el.tagName?.toLowerCase() === "svg") {
@@ -62,8 +86,8 @@
         c.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       }
 
-      if (!c.getAttribute("viewBox") && r.width && r.height) {
-        c.setAttribute("viewBox", `0 0 ${Math.round(r.width)} ${Math.round(r.height)}`);
+      if (!c.getAttribute("viewBox") && width && height) {
+        c.setAttribute("viewBox", `0 0 ${width} ${height}`);
       }
 
       data = "data:image/svg+xml;charset=utf-8," +
@@ -80,13 +104,7 @@
       el.closest?.("[id]")?.getAttribute("id")
     ].filter(Boolean).join(" ");
 
-    let score = 0;
-    if (/logo|brand|header|nav|masthead|identity/i.test(txt)) score += 50;
-    if (r.top < 200) score += 20;
-    if (r.width > 30 && r.height > 10) score += 20;
-    if (/icon|sprite|social|facebook|twitter|linkedin|instagram/i.test(txt)) score -= 20;
-
-    found.push({ el, type, data, txt, r, score });
+    found.push({ el, type, data, txt, r, width, height, area });
   };
 
   const scan = root => {
@@ -125,7 +143,7 @@
   };
 
   scan(document);
-  found.sort((a, b) => b.score - a.score);
+  found.sort((a, b) => b.area - a.area);
 
   if (!found.length) {
     alert("No SVGs found");
@@ -146,9 +164,7 @@
         color: #111;
       }
 
-      #lg-picker * {
-        box-sizing: border-box;
-      }
+      #lg-picker * { box-sizing: border-box; }
 
       #lg-picker .p {
         position: absolute;
@@ -168,10 +184,7 @@
         margin-bottom: 16px;
       }
 
-      #lg-picker .h-actions {
-        display: flex;
-        gap: 8px;
-      }
+      #lg-picker .h-actions { display: flex; gap: 8px; }
 
       #lg-picker .g {
         display: grid;
@@ -215,9 +228,7 @@
         word-break: break-word;
       }
 
-      #lg-picker .m b {
-        color: #111;
-      }
+      #lg-picker .m b { color: #111; }
 
       #lg-picker .a {
         display: flex;
@@ -245,14 +256,8 @@
         color: #fff;
       }
 
-      #lg-picker .a button {
-        background: #0078ff;
-      }
-
-      #lg-picker .a button:disabled {
-        opacity: .7;
-        cursor: wait;
-      }
+      #lg-picker .a button { background: #0078ff; }
+      #lg-picker .a button:disabled { opacity: .7; cursor: wait; }
 
       #lg-picker #lg-close,
       #lg-picker #lg-settings {
@@ -266,10 +271,9 @@
         <div>
           <b>${found.length} SVG candidate${found.length === 1 ? "" : "s"} found</b><br>
           <small>
-            Uploading to Cloudinary cloud:
-            <b>${esc(CLOUDINARY_CONFIG.cloudName)}</b>,
-            folder:
-            <b>${esc(CLOUDINARY_CONFIG.folder)}</b>
+            Sorted by size, largest first. Uploading to Cloudinary cloud:
+            <b>${esc(CLOUDINARY_CONFIG.cloudName)}</b>. Asset name:
+            <b>${esc(PUBLIC_ID)}</b>
           </small>
         </div>
         <div class="h-actions">
@@ -293,13 +297,13 @@
       </div>
 
       <div class="m">
-        <b>${i === 0 ? "Best guess — " : ""}${esc(x.type)}</b><br>
-        ${Math.round(x.r.width || 0)} × ${Math.round(x.r.height || 0)}px<br>
+        <b>${i === 0 ? "Largest — " : ""}${esc(x.type)}</b><br>
+        ${x.width} x ${x.height}px<br>
         ${esc(x.txt).slice(0, 120)}
       </div>
 
       <div class="a">
-        <a href="${esc(x.data)}" download="logo-${i + 1}.svg" target="_blank" rel="noopener">Download</a>
+        <a href="${esc(x.data)}" download="${esc(DOWNLOAD_NAME)}" target="_blank" rel="noopener">Download</a>
         <button data-i="${i}">Upload</button>
       </div>
     `;
@@ -307,8 +311,8 @@
     grid.appendChild(card);
   });
 
-  async function uploadToCloudinary(x, i, btn) {
-    btn.textContent = "Uploading…";
+  async function uploadToCloudinary(x, btn) {
+    btn.textContent = "Uploading...";
     btn.disabled = true;
 
     try {
@@ -327,14 +331,12 @@
         blob = await res.blob();
       }
 
-      const file = new File([blob], `logo-${i + 1}.svg`, {
-        type: "image/svg+xml"
-      });
+      const file = new File([blob], DOWNLOAD_NAME, { type: "image/svg+xml" });
 
       const fd = new FormData();
       fd.append("file", file);
       fd.append("upload_preset", CLOUDINARY_CONFIG.uploadPreset);
-      fd.append("folder", CLOUDINARY_CONFIG.folder);
+      fd.append("public_id", PUBLIC_ID);
       fd.append("tags", "logo-grabber,svg,logo");
 
       const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloudName}/image/upload`, {
@@ -359,10 +361,7 @@
   }
 
   box.querySelectorAll("button[data-i]").forEach(btn => {
-    btn.onclick = () => {
-      const i = Number(btn.dataset.i);
-      uploadToCloudinary(found[i], i, btn);
-    };
+    btn.onclick = () => uploadToCloudinary(found[Number(btn.dataset.i)], btn);
   });
 
   box.querySelector("#lg-settings").onclick = () => {
