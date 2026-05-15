@@ -1,5 +1,5 @@
 (() => {
-  const CONFIG_KEY = "logoGrabberCloudinaryConfig";
+  const CLOUDINARY_CONFIG = window.LOGO_GRABBER_CONFIG || getConfig();
 
   function getConfig() {
     let config = {};
